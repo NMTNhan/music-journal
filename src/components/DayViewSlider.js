@@ -1,14 +1,43 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import SongModal from "./SongModal";
+import { useNavigate } from "react-router-dom";
 
 const DayViewSlider = ({ selectedDay, songs, onClose, onAdd, currentDate, onEdit, onDelete }) => {
+  const navigate = useNavigate();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalData, setModalData] = useState(null);
-  const [localSongs, setLocalSongs] = useState(songs);
+  const [localSongs, setLocalSongs] = useState([]);
+
+  // Fetch songs for the selected day whenever the day changes
+  useEffect(() => {
+    const fetchSongsForDay = async () => {
+      if (!selectedDay) return;
+
+      const formattedDate = `${currentDate.getFullYear()}-${(currentDate.getMonth() + 1)
+        .toString()
+        .padStart(2, "0")}-${selectedDay.toString().padStart(2, "0")}`;
+
+      try {
+        const response = await fetch(
+          `http://localhost:5000/api/songs/getSongs?date=${formattedDate}`
+        );
+        const data = await response.json();
+        setLocalSongs(data);
+      } catch (error) {
+        console.error("Error fetching songs:", error);
+      }
+    };
+
+    fetchSongsForDay();
+  }, [selectedDay, currentDate]);
 
   // Function to open Add Song Modal
   const openAddModal = () => {
+    const formattedDate = `${currentDate.getFullYear()}-${(currentDate.getMonth() + 1)
+      .toString()
+      .padStart(2, "0")}-${selectedDay.toString().padStart(2, "0")}`;
+  
     setModalData({
       name: "",
       artist: "",
@@ -16,9 +45,7 @@ const DayViewSlider = ({ selectedDay, songs, onClose, onAdd, currentDate, onEdit
       tags: "",
       journal: "",
       file: null,
-      date: `${currentDate.getFullYear()}-${(currentDate.getMonth() + 1)
-        .toString()
-        .padStart(2, "0")}-${selectedDay.toString().padStart(2, "0")}`,
+      date: formattedDate, // Use the selected date
     });
     setIsModalOpen(true);
   };
@@ -35,14 +62,19 @@ const DayViewSlider = ({ selectedDay, songs, onClose, onAdd, currentDate, onEdit
       const response = await fetch(`http://localhost:5000/api/songs/deleteSong/${id}`, {
         method: "DELETE",
       });
-
+  
       if (!response.ok) throw new Error("Failed to delete song");
-
+  
       setLocalSongs((prevSongs) => prevSongs.filter((song) => song._id !== id)); // Update local state
       onDelete(id); // Notify parent to remove the song
     } catch (error) {
       console.error("Error deleting song:", error);
     }
+  };
+
+  // Navigate to the player page with only the selected song (no playlist)
+  const handlePlaySong = (song) => {
+    navigate("/player", { state: { song, playlist: [] } });
   };
 
   return (
@@ -77,9 +109,6 @@ const DayViewSlider = ({ selectedDay, songs, onClose, onAdd, currentDate, onEdit
               </button>
               <button className="text-red" onClick={() => handleDeleteSong(song._id)}>
                 Delete
-              </button>
-              <button className="text-green-400" onClick={() => console.log("Playing song:", song)}>
-                Play
               </button>
             </div>
           </div>
