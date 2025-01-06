@@ -5,87 +5,114 @@ const router = express.Router();
 
 // Configure storage for uploads
 const storage = multer.diskStorage({
-  destination: "./uploads",
+  destination: (req, file, cb) => {
+    if (file.fieldname === "file") {
+      cb(null, "./uploads");
+    } else if (file.fieldname === "image") {
+      cb(null, "./uploads/image");
+    }
+  },
   filename: (req, file, cb) => {
     cb(null, `${Date.now()}-${file.originalname}`);
   },
 });
 
-// Validate file type and size
+// File type and size validation
 const upload = multer({
   storage,
   fileFilter: (req, file, cb) => {
-    // Validate file type
-    const allowedTypes = ["audio/mpeg", "audio/wav", "audio/x-wav", "audio/m4a"];
-    if (!allowedTypes.includes(file.mimetype)) {
-      return cb(new Error("Only audio files are allowed!"));
+    const allowedTypes = {
+      file: ["audio/mpeg", "audio/wav", "audio/x-wav", "audio/m4a"],
+      image: ["image/jpeg", "image/png", "image/gif"],
+    };
+    if (!allowedTypes[file.fieldname].includes(file.mimetype)) {
+      return cb(new Error(`Only ${file.fieldname === "file" ? "audio" : "image"} files are allowed!`));
     }
-
-    // Allow the file if it passes validation
     cb(null, true);
   },
-  limits: { fileSize: 10 * 1024 * 1024 }, // Limit file size to 10 MB
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB for audio, adjust as needed for images
 });
 
-// Add a song with file validation
-router.post("/addSong", upload.single("file"), async (req, res) => {
-  try {
-    console.log("File Path:", req.file.path); // Debugging to check file path
-    const { name, artist, mood, tags, journal } = req.body;
+// Add a song with file and image validation
+router.post(
+  "/addSong",
+  upload.fields([
+    { name: "file", maxCount: 1 },
+    { name: "image", maxCount: 1 },
+  ]),
+  async (req, res) => {
+    try {
+      const { name, artist, mood, tags, journal, date } = req.body;
 
-    const song = new Song({
-      name,
-      artist,
-      mood,
-      tags: tags.split(","),
-      journal,
-      filePath: req.file.path.replace(/\\/g, "/"), // Ensure forward slashes
-    });
+      const song = new Song({
+        name,
+        artist,
+        mood,
+        tags: tags.split(","),
+        journal,
+        filePath: req.files["file"] ? req.files["file"][0].path.replace(/\\/g, "/") : null,
+        imagePath: req.files["image"] ? req.files["image"][0].path.replace(/\\/g, "/") : null,
+        date: date ? new Date(date) : Date.now(),
+      });
 
-    await song.save();
-    res.status(201).json(song);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+      await song.save();
+      res.status(201).json(song);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
   }
-});
+);
 
-
-// Get songs
-router.get("/getSongs", async (req, res) => {
-  try {
-    const songs = await Song.find();
-    res.status(200).json(songs);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Edit songs
-router.put("/editSong/:id", async (req, res) => {
+// Edit a song
+router.put(
+  "/editSong/:id",
+  upload.fields([
+    { name: "file", maxCount: 1 },
+    { name: "image", maxCount: 1 },
+  ]),
+  async (req, res) => {
     try {
       const { id } = req.params;
-      const updatedData = req.body;
+      const { name, artist, mood, tags, journal, date } = req.body;
+
+      const updatedData = {
+        name,
+        artist,
+        mood,
+        tags: tags.split(","),
+        journal,
+        date: new Date(date),
+      };
+
+      if (req.files["file"]) {
+        updatedData.filePath = req.files["file"][0].path.replace(/\\/g, "/");
+      }
+      if (req.files["image"]) {
+        updatedData.imagePath = req.files["image"][0].path.replace(/\\/g, "/");
+      }
+
       const song = await Song.findByIdAndUpdate(id, updatedData, { new: true });
-      if (!song) return res.status(404).json({ message: "Song not found" });
+
+      if (!song) {
+        return res.status(404).json({ error: "Song not found" });
+      }
+
       res.status(200).json(song);
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
-});
+  }
+);
 
-// Delete songs
-const fs = require("fs");
+// Delete a song
 router.delete("/deleteSong/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const song = await Song.findByIdAndDelete(id);
-    if (!song) return res.status(404).json({ message: "Song not found" });
 
-    // Remove the file from the server
-    if (song.filePath) {
-      fs.unlink(song.filePath, (err) => {
-        if (err) console.error("Error deleting file:", err.message);
-      });
+    const song = await Song.findByIdAndDelete(id);
+
+    if (!song) {
+      return res.status(404).json({ error: "Song not found" });
     }
 
     res.status(200).json({ message: "Song deleted successfully" });
@@ -94,39 +121,69 @@ router.delete("/deleteSong/:id", async (req, res) => {
   }
 });
 
-// Filter Songs
+// Get songs
+router.get("/getSongs", async (req, res) => {
+  try {
+    const { date } = req.query;
+
+    const query = {};
+    if (date) {
+      const startOfDay = new Date(date);
+      startOfDay.setUTCHours(0, 0, 0, 0);
+
+      const endOfDay = new Date(date);
+      endOfDay.setUTCHours(23, 59, 59, 999);
+
+      query.date = { $gte: startOfDay, $lte: endOfDay };
+    }
+
+    const songs = await Song.find(query);
+    res.status(200).json(songs);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Filter songs by mood, tags, and date range
+// Filter songs by mood, tags, and date range
 router.get("/filterSongs", async (req, res) => {
+  try {
     const { mood, tags, startDate, endDate } = req.query;
-  
-    const query = {};
-    if (mood) query.mood = mood;
-    if (tags) query.tags = { $in: tags.split(",") }; // Match any of the tags
-    if (startDate && endDate) query.date = { $gte: new Date(startDate), $lte: new Date(endDate) };
-  
-    try {
-      const songs = await Song.find(query);
-      res.status(200).json(songs);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
+   // Build query object
+const query = {};
+
+// Mood filter (case-insensitive)
+if (mood) {
+  query.mood = { $regex: new RegExp(`^${mood}$`, "i") };
+}
+
+// Tags filter
+if (tags) {
+  query.tags = { $in: tags.split(",").map((tag) => tag.trim()) };
+}
+
+// Date range filter
+if (startDate || endDate) {
+  query.date = {};
+  if (startDate) {
+    query.date.$gte = new Date(startDate).setUTCHours(0, 0, 0, 0);
+  }
+  if (endDate) {
+    query.date.$lte = new Date(endDate).setUTCHours(23, 59, 59, 999);
+  }
+}
+
+// Log the query
+console.log("Filter query:", query);
+
+// Perform database query
+const songs = await Song.find(query);
+
+    res.status(200).json(songs);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
-  
-// Create playlist according to metadata
-router.get("/createPlaylist", async (req, res) => {
-    const { mood, tags, startDate, endDate } = req.query;
-  
-    const query = {};
-    if (mood) query.mood = mood;
-    if (tags) query.tags = { $in: tags.split(",") };
-    if (startDate && endDate) query.date = { $gte: new Date(startDate), $lte: new Date(endDate) };
-  
-    try {
-      const playlist = await Song.find(query);
-      res.status(200).json(playlist);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-});
-  
+
 
 module.exports = router;
