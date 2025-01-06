@@ -1,3 +1,6 @@
+## Update 1.0
+Core features are done, alot of bug fixing are required.
+
 ## Backend
 1. Open terminal (CTRL+`)
 2. cd backend
