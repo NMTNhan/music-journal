@@ -1,3 +1,9 @@
+## Update 1.0.1
+- Added Song Queue functions.
+- Deleting songs will now remove it from local storage.
+- Song covers are now togglable.
+- Removed sample songs from local folders.
+
 ## Update 1.0
 Core features are done, alot of bug fixing are required.
 
