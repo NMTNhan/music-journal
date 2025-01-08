@@ -2,6 +2,8 @@ const express = require("express");
 const multer = require("multer");
 const Song = require("../models/Song");
 const router = express.Router();
+const fs = require("fs");
+const path = require("path");
 
 // Configure storage for uploads
 const storage = multer.diskStorage({
@@ -16,6 +18,18 @@ const storage = multer.diskStorage({
     cb(null, `${Date.now()}-${file.originalname}`);
   },
 });
+
+// Utility function to delete a file
+const deleteFile = (filePath) => {
+  fs.unlink(filePath, (err) => {
+    if (err) {
+      console.error(`Error deleting file: ${filePath}`, err);
+    } else {
+      console.log(`File deleted: ${filePath}`);
+    }
+  });
+};
+
 
 // File type and size validation
 const upload = multer({
@@ -104,20 +118,50 @@ router.put(
   }
 );
 
-// Delete a song
+// Delete song by ID and associated files
 router.delete("/deleteSong/:id", async (req, res) => {
   try {
-    const { id } = req.params;
+    const songId = req.params.id;
 
-    const song = await Song.findByIdAndDelete(id);
-
+    // Find the song by ID
+    const song = await Song.findById(songId);
     if (!song) {
-      return res.status(404).json({ error: "Song not found" });
+      return res.status(404).json({ message: "Song not found" });
     }
 
-    res.status(200).json({ message: "Song deleted successfully" });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    // Construct paths for the song file and the image file
+    const songFilePath = path.resolve(
+      __dirname,
+      "../",
+      song.filePath.startsWith("uploads/") ? song.filePath : `uploads/${song.filePath}`
+    );
+    const imageFilePath = song.imagePath
+      ? path.resolve(
+          __dirname,
+          "../",
+          song.imagePath.startsWith("uploads/") ? song.imagePath : `uploads/${song.imagePath}`
+        )
+      : null;
+
+    // Debugging: Log paths
+    console.log("Song file path:", songFilePath);
+    console.log("Image file path:", imageFilePath);
+
+    // Delete the song file
+    deleteFile(songFilePath);
+
+    // Delete the image file if it exists
+    if (imageFilePath) {
+      deleteFile(imageFilePath);
+    }
+
+    // Delete the song from the database
+    await Song.findByIdAndDelete(songId);
+
+    res.status(200).json({ message: "Song and associated files deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting song:", error);
+    res.status(500).json({ error: "An error occurred while deleting the song" });
   }
 });
 
@@ -144,7 +188,6 @@ router.get("/getSongs", async (req, res) => {
   }
 });
 
-// Filter songs by mood, tags, and date range
 // Filter songs by mood, tags, and date range
 router.get("/filterSongs", async (req, res) => {
   try {
