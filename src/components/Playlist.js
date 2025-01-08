@@ -4,7 +4,6 @@ import { FaPlay, FaPause } from "react-icons/fa";
 import { usePlayer } from "../context/PlayerContext";
 import { useNavigate } from "react-router-dom";
 
-
 const moodOptions = [
   { value: "", label: "Workout" },
   { value: "happy", label: "Happy" },
@@ -26,7 +25,14 @@ const Playlist = () => {
   const [playlist, setPlaylist] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const { currentSong, setCurrentSong, isPlaying, setIsPlaying, setSongQueue } = usePlayer();
+  const {
+    currentSong,
+    setCurrentSong,
+    isPlaying,
+    setIsPlaying,
+    setSongQueue,
+    setIsPlayerExpanded, // Access setIsPlayerExpanded here
+  } = usePlayer();
   const navigate = useNavigate();
 
   const handleChange = (selectedOption, actionMeta) => {
@@ -58,7 +64,7 @@ const Playlist = () => {
     } else {
       setCurrentSong(song);
       setIsPlaying(true);
-      navigate("/player", { state: { song, playlist } });
+      setIsPlayerExpanded(true); // Expand the player when a new song is played
     }
   };
 

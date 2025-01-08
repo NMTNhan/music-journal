@@ -7,12 +7,14 @@ export const PlayerProvider = ({ children }) => {
   const [songQueue, setSongQueue] = useState([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolume] = useState(0.5);
+  const [isPlayerExpanded, setIsPlayerExpanded] = useState(false); // State for player visibility
 
   // Function to reset the player state
   const resetPlayer = () => {
     setCurrentSong(null);
     setSongQueue([]);
     setIsPlaying(false);
+    setIsPlayerExpanded(false); // Reset player visibility
   };
 
   return (
@@ -26,6 +28,8 @@ export const PlayerProvider = ({ children }) => {
         setIsPlaying,
         volume,
         setVolume,
+        isPlayerExpanded,
+        setIsPlayerExpanded, // Expose player visibility state
         resetPlayer, // Expose resetPlayer to the context
       }}
     >
